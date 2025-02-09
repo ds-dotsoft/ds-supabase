@@ -1,7 +1,7 @@
 fx_version 'cerulean'
 game 'gta5'
 
-author 'dotsoft/jvson03'
+author 'dotsoft/jason & alex'
 description 'A complete Supabase wrapper for FiveM'
 version '1.0.0'
 
