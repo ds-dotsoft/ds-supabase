@@ -1,223 +1,133 @@
 [![MIT License](https://img.shields.io/badge/License-MIT-green.svg)](https://choosealicense.com/licenses/mit/)
 
-# Supabase Wrapper for FiveM
+# ds-supabase
 
-A robust FiveM resource that provides a complete wrapper for Supabase's REST API. This resource exposes CRUD operations with enhanced error handling, allowing your other server resources to easily interact with a Supabase database.
-
-## Table of Contents
-
-- [Overview](#overview)
-- [Features](#features)
-- [Installation](#installation)
-- [Configuration](#configuration)
-- [Exported Functions](#exported-functions)
-  - [InsertData](#insertdata)
-  - [QueryData](#querydata)
-  - [UpdateData](#updatedata)
-  - [DeleteData](#deletedata)
-- [Error Handling](#error-handling)
-- [Debug Command](#debug-command)
-- [License](#license)
-- [Contributing](#contributing)
-- [Support](#support)
-
-## Overview
-
-This resource is designed to simplify interacting with a Supabase database from your FiveM server. It provides functions to insert, query, update, and delete records in your Supabase tables via REST API calls—all from within your FiveM server. Each function includes enhanced error handling, ensuring that you receive detailed feedback in case of failure.
+**ds-supabase** is a FiveM resource that provides a Supabase client with a JavaScript-like API for interacting with your Supabase database via its REST API. It offers an asynchronous, promise-based query builder with a rich set of filtering, ordering, and modifier methods, as well as support for calling Postgres functions (RPC).
 
 ## Features
 
-- **CRUD Operations:**  
-  - **InsertData:** Insert new records into a table.
-  - **QueryData:** Retrieve data from a table with optional query parameters.
-  - **UpdateData:** Update existing records in a table.
-  - **DeleteData:** Delete records from a table.
-- **Enhanced Error Handling:**  
-  Each API call validates the response, decodes error messages (if any), and passes meaningful error information back to your callback.
-- **Exports for Easy Integration:**  
-  All functions are exported, so they can be called directly from other resources using `exports.supabase_wrapper:<FunctionName>(...)`.
-- **Debug Command:**  
-  Use the `/supatest` command to quickly test connectivity and query a specified table.
+- **Asynchronous Execution**: Supports both `await()` and `callback()` methods for handling queries.
+- **Chainable Query Builder**: Enables easy filtering, ordering, limiting, and more.
+- **Supabase RPC Support**: Allows calling Postgres functions directly from FiveM.
+- **Lightweight & Efficient**: Designed to be performant and easy to integrate into existing projects.
+
+---
 
 ## Installation
 
-1. **Download/Clone the Resource:**
-
-   Place the `supabase_wrapper` folder inside your server's `resources` directory with the following structure:
-
+1. **Download or Clone the Repository**
+   ```sh
+   git clone https://github.com/yourgithubusername/ds-supabase.git
    ```
-   resources/
-   └── supabase_wrapper/
-       ├── fxmanifest.lua
-       └── server.lua
+2. **Move to Your FiveM Resources Folder**
+   ```sh
+   mv ds-supabase /path/to/your/fivem/resources/
    ```
-
-2. **Update Your Server Configuration:**
-
-   In your `server.cfg`, add the following line to ensure the resource starts:
-
+3. **Add to Your `server.cfg`**
    ```cfg
-   ensure supabase_wrapper
+   ensure ds-supabase
    ```
+4. **Restart Your Server**
 
-## Configuration
+---
 
-This resource requires two configuration variables (convars) to be set in your `server.cfg`:
+## Getting Started
 
-- **supabase_url:** The URL of your Supabase project.
-- **supabase_key:** Your Supabase API key.
-
-Example configuration:
-
-```cfg
-set supabase_url "https://your-project.supabase.co"
-set supabase_key "your-supabase-key"
-```
-
-Make sure these values are set **before** starting the resource.
-
-## Exported Functions
-
-The following functions are exported by the resource and can be called from other server scripts.
-
-### InsertData
-
-**Description:**  
-Inserts a new record into the specified table.
-
-**Usage:**
+### Creating a Client
 
 ```lua
-exports.supabase_wrapper:InsertData(tableName, data, callback)
+local supabase = exports["ds-supabase"].createClient("https://your-project.supabase.co", "your-supabase-key")
 ```
 
-- `tableName` (string): The name of the Supabase table.
-- `data` (table): A Lua table representing the record to insert.
-- `callback` (function): A callback function that receives `(statusCode, responseText, responseHeaders)`.
+### Querying Data
 
-**Example:**
-
+#### Using `await()`
 ```lua
-exports.supabase_wrapper:InsertData("players", { name = "John Doe", score = 100 }, function(statusCode, responseText, responseHeaders)
-    if statusCode == 200 or statusCode == 201 then
-        print("Insert successful!")
+local data, error = supabase:from("players"):select():await()
+if error then
+    print("Fetch error:", error)
+else
+    print("Fetched players:", data)
+end
+```
+
+#### Using `callback()`
+```lua
+supabase:from("players"):select():callback(function(data, error)
+    if error then
+        print("Callback error:", error)
     else
-        print("Insert failed with error: " .. responseText)
+        print("Callback fetched players:", data)
     end
 end)
 ```
 
-### QueryData
-
-**Description:**  
-Queries data from the specified table. Optionally, you can pass URL query parameters.
-
-**Usage:**
-
+### Inserting Data
 ```lua
-exports.supabase_wrapper:QueryData(tableName, queryParams, callback)
+local data, error = supabase:from("players"):insert({ name = "Alice", score = 100 }):await()
 ```
 
-- `tableName` (string): The name of the table.
-- `queryParams` (string, optional): URL query parameters (e.g., `"select=*&id=eq.1"`).
-- `callback` (function): A callback function that receives `(statusCode, responseText, responseHeaders)`.
-
-**Example:**
-
+### Updating Data
 ```lua
-exports.supabase_wrapper:QueryData("players", "select=*&score=gt.100", function(statusCode, responseText, responseHeaders)
-    if statusCode == 200 then
-        local data = json.decode(responseText)
-        print("Query returned " .. #data .. " record(s).")
-    else
-        print("Query failed with error: " .. responseText)
-    end
-end)
+local data, error = supabase:from("players"):eq("id", 1):update({ score = 150 }):await()
 ```
 
-### UpdateData
-
-**Description:**  
-Updates an existing record in the specified table. This uses the HTTP PATCH method for partial updates.
-
-**Usage:**
-
+### Deleting Data
 ```lua
-exports.supabase_wrapper:UpdateData(tableName, data, queryParams, callback)
+local data, error = supabase:from("players"):eq("id", 1):delete():await()
 ```
 
-- `tableName` (string): The name of the table.
-- `data` (table): A Lua table representing the fields to update.
-- `queryParams` (string, optional): URL query parameters to filter which records to update.
-- `callback` (function): A callback function that receives `(statusCode, responseText, responseHeaders)`.
-
-**Example:**
-
+### RPC Calls
 ```lua
-exports.supabase_wrapper:UpdateData("players", { score = 150 }, "id=eq.1", function(statusCode, responseText, responseHeaders)
-    if statusCode == 204 then
-        print("Update successful!")
-    else
-        print("Update failed with error: " .. responseText)
-    end
-end)
+local rpcData, rpcError = supabase:rpc("increment", { amount = 1 }):await()
 ```
 
-### DeleteData
+---
 
-**Description:**  
-Deletes records from the specified table.
+## API Reference
 
-**Usage:**
+### SupabaseClient
 
-```lua
-exports.supabase_wrapper:DeleteData(tableName, queryParams, callback)
-```
+- **createClient(url, key)**: Creates a new Supabase client.
+- **from(tableName)**: Returns a `QueryBuilder` instance for querying.
+- **rpc(functionName, params, options)**: Calls a Postgres function via RPC.
 
-- `tableName` (string): The name of the table.
-- `queryParams` (string, optional): URL query parameters to filter which records to delete.
-- `callback` (function): A callback function that receives `(statusCode, responseText, responseHeaders)`.
+### QueryBuilder Methods
 
-**Example:**
+#### Filter Methods
+- `eq(column, value)`: Where column equals value.
+- `neq(column, value)`: Where column is not equal to value.
+- `gt(column, value)`, `gte(column, value)`, `lt(column, value)`, `lte(column, value)`: Numeric comparisons.
+- `like(column, pattern)`, `ilike(column, pattern)`: Pattern matching.
+- `in(column, values)`: Matches an array of values.
 
-```lua
-exports.supabase_wrapper:DeleteData("players", "id=eq.1", function(statusCode, responseText, responseHeaders)
-    if statusCode == 204 then
-        print("Delete successful!")
-    else
-        print("Delete failed with error: " .. responseText)
-    end
-end)
-```
+#### Modifier Methods
+- `order(column, options)`: Order results by column.
+- `limit(n)`: Limit number of rows.
+- `range(from, to)`: Query a specific range.
+- `single()`, `maybeSingle()`: Return one row or possibly one row.
+- `csv()`: Return as CSV.
 
-## Debug Command
+#### Terminal Methods
+- `select(columns)`, `insert(data)`, `update(data)`, `upsert(data, options)`, `delete()`.
 
-For testing purposes, a debug command is available:
+#### Async Handling
+- `await()`: Returns `[data, error]`.
+- `callback(fn)`: Registers a callback for handling the result.
 
-```
-/supatest <tableName> [queryParams]
-```
+### RPCBuilder Methods
+- `execute()`: Executes an RPC function.
+- `await()`: Awaits the RPC call.
+- `callback(fn)`: Executes RPC with a callback.
 
-- **Usage Example:**
-
-  ```
-  /supatest players "select=*"
-  ```
-
-This command queries the specified table and prints the results (or error messages) to the server console.
+---
 
 ## License
-
-Include your license information here. For example:
-
-```
-MIT License
-```
+This project is licensed under the MIT License.
 
 ## Contributing
-
-Contributions are welcome! Please submit pull requests or open an issue if you have suggestions, bug reports, or feature requests.
+Contributions are welcome! Open an issue or submit a pull request on GitHub.
 
 ## Support
+For questions or support, please open an issue on [GitHub](https://github.com/yourgithubusername/ds-supabase/issues).
 
-If you need support or have questions, please open an issue on the repository or contact [Your Contact Information].
