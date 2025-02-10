@@ -18,7 +18,7 @@ function dump(o)
     else
        return tostring(o)
     end
-end
+ end
 
 ---@class SupabaseClient : OxClass
 ---@field url string
@@ -35,15 +35,14 @@ local SupabaseClient = lib.class('SupabaseClient')
 ---@field data any
 ---@field operation string
 ---@field singleRow boolean
----@field _maybeSingle boolean
----@field _upsert boolean
+---@field maybeSingle boolean
+---@field upsert boolean
 ---@field on_conflict string
----@field _order string
----@field _limit number
----@field _range table
----@field _abortSignal function
----@field _csv boolean
----@field _prefer string
+---@field order string
+---@field limit number
+---@field range table
+---@field abortSignal function
+---@field csv boolean
 local QueryBuilder = lib.class('QueryBuilder')
 
 ---@class RPCBuilder : OxClass
@@ -85,21 +84,14 @@ function QueryBuilder:constructor(client, tableName)
     self.data = nil             -- Payload for POST/PATCH requests.
     self.operation = nil        -- Operation type ("select", "insert", etc.).
     self.singleRow = false      -- If true, return one row.
-    self._maybeSingle = false   -- If true, return zero or one row.
-    self._upsert = false        -- If true, perform an upsert.
+    self._maybeSingle = false    -- If true, return zero or one row.
+    self._upsert = false         -- If true, perform an upsert.
     self.on_conflict = nil      -- Conflict target for upsert.
-    self._order = nil           -- Order clause string.
-    self._limit = nil           -- Limit clause.
-    self._range = nil           -- Table with { from, to } for the "Range" header.
-    self._abortSignal = nil     -- Function that returns true if the request should abort.
-    self._csv = false           -- If true, return CSV output (raw string).
-    self._prefer = nil          -- The Prefer header value, if any.
-    return self
-end
-
--- New helper method to set the Prefer header.
-function QueryBuilder:prefer(value)
-    self._prefer = value
+    self._order = nil            -- Order clause string.
+    self._limit = nil            -- Limit clause.
+    self._range = nil            -- Table with { from, to } for the "Range" header.
+    self._abortSignal = nil      -- Function that returns true if the request should be aborted.
+    self._csv = false            -- If true, return CSV output (raw string).
     return self
 end
 
@@ -285,25 +277,21 @@ function QueryBuilder:select(columns)
         self.method = "GET"
         self.operation = "select"
     end
-    return self
+    return self:execute()
 end
 
 function QueryBuilder:insert(data)
     self.method = "POST"
     self.operation = "insert"
     self.data = data
-    -- Uncomment the following line to automatically set Prefer for single-row insertion:
-    self:prefer("return=representation")
-    return self
+    return self:execute()
 end
 
 function QueryBuilder:update(data)
     self.method = "PATCH"
     self.operation = "update"
     self.data = data
-    -- Uncomment the following line to automatically set Prefer for update if desired:
-    self:prefer("return=representation")
-    return self
+    return self:execute()
 end
 
 function QueryBuilder:upsert(data, options)
@@ -315,14 +303,13 @@ function QueryBuilder:upsert(data, options)
     if options and options.onConflict then
         self.on_conflict = options.onConflict
     end
-    self:prefer("resolution=merge-duplicates;return=representation")
     return self
 end
 
 function QueryBuilder:delete()
     self.method = "DELETE"
     self.operation = "delete"
-    return self
+    return self:execute()
 end
 
 function QueryBuilder:callback(cb)
@@ -344,14 +331,12 @@ function QueryBuilder:buildUrl()
     local url = self.client.url .. "/rest/v1/" .. self.table
     local params = {}
 
-    -- For read operations (select/upsert) include the select parameter.
     if self.operation == "select" or self.operation == "upsert" then
         table.insert(params, "select=" .. self.select_columns)
     end
 
     if self._upsert then
-        -- (The upsert action is signaled by the Prefer header; you can comment out the next line if not needed)
-        --table.insert(params, "upsert=true")
+        table.insert(params, "upsert=true")
     end
 
     if self.on_conflict then
@@ -393,47 +378,54 @@ function QueryBuilder:execute()
         return p
     end
 
-    -- Clone the client's headers
     local headers = {}
     for k, v in pairs(self.client.headers) do
         headers[k] = v
     end
-
     if self._range then
         headers["Range"] = string.format("%d-%d", self._range.from, self._range.to)
     end
 
-    if self._prefer then
-        headers["Prefer"] = self._prefer
-    end
+    print("URL: " ..url)
+    print("Method: ".. self.method)
+    print("Payload: " .. dump(payload))
+    print("Headers: " .. dump(headers))
 
     PerformHttpRequest(url, function(statusCode, responseText, responseHeaders, errorData)
         local result = { data = nil, error = nil }
         print("Status code is " .. statusCode)
-        print("Error data: ".. dump(errorData))
+        print("Error data" ..errorData)
         if statusCode == 0 then
             result.error = "HTTP request failed (no response received)"
         else
             if self._csv then
                 result.data = responseText
             else
-                if statusCode == 200 or statusCode == 201 then
-                    -- Resource created, returned something
-                    -- print("statusCode "..statusCode)
-                    -- print("responseText "..responseText)
-                    local decoded = json.decode(responseText)
-                    -- print("decoded "..dump(decoded))
-                    if self.singleRow then
-                        result.data = decoded[1]
+                print(dump(result))
+                print(dump(result.data))
+                local successDecode, decoded = pcall(json.decode, responseText)
+                print(dump(decoded))
+                if successDecode then
+                    if self._maybeSingle then
+                        if type(decoded) == "table" then
+                            if #decoded == 0 then
+                                result.data = nil
+                            elseif #decoded == 1 then
+                                result.data = decoded[1]
+                            else
+                                result.error = "More than one row returned for maybeSingle"
+                            end
+                        else
+                            result.data = decoded
+                        end
+                    elseif self.singleRow then
+                        dump(result)
+                        result.data = decoded[1] or nil
                     else
                         result.data = decoded
                     end
-                elseif statusCode == 204 then
-                    -- Resource created, but nothing to return
-                    result.error = nil -- Just ensure its nil I guess?
                 else
-                    -- Something bad happened
-                    result.error = errorData
+                    result.error = "Failed to decode JSON"
                 end
             end
         end
@@ -497,51 +489,33 @@ end
 -- MODULE EXPORT: SUPABASE
 ----------------------------------------
 
--- Export createClient and testClient as functions.
+-- Export createClient as a method on an export table so that colon syntax works as expected.
 function createClient(url, key)
     print("is key   " .. key)
     print("is url   " .. url)
-    return { client = SupabaseClient:new(url, key) }
+    return SupabaseClient:new(url, key)
 end
 
-function testSuite(url, key)
+function testClient(url, key)
     local supabase = SupabaseClient:new(url, key)
 
-    -- Example: upsert (with auto-prefer header set for resolution=merge-duplicates)
-    local data, err = supabase
+    -- local insertData, insertError = supabase:from("players")
+    --     :insert({ name = "TestPlayer" })
+    --     :await()
+
+    local data, error = supabase
         :from("players")
-        :upsert({ name = "TestPlayer3" }, { onConflict = "name" })
+        :upsert({ name = "TestPlayer" }, { onConflict = "name" })
         :single()
         :await()
 
-    print("DATA: " ..dump(data))
-    print("ERROR: "..dump(err) or "nil")
-
-    local data, err = supabase
-        :from("players")
-        :select("name", "TestPlayer")
-        :single()
-        :await()
-
-    print("DATA " ..dump(data))
-    print("ERROR: "..dump(err) or "nil")
-
-    local data, err = supabase
-        :from("players")
-        :select()
-        :eq("name", "TestPlayer")
-        :single()
-        :await()
-
-    print("DATA " ..dump(data))
-    print("ERROR: "..dump(err) or "nil")
-
-    -- if err then
-    --     print("[testClient] Error:", err)
-    -- else
-    --     print("[testClient] Inserted data:", json.encode(data))
-    -- end
+    if insertError then
+        print("[testClient] Insert Error:", insertError)
+        return
+    else
+        print("[testClient] Inserted data:", json.encode(insertData))
+    end
 end
 
 exports("createClient", createClient)
-exports("testClient", testSuite)
+exports("testClient", testClient)
