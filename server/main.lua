@@ -7,19 +7,6 @@
 -- SUPABASE CLIENT (SupabaseClient)
 ----------------------------------------
 
-function dump(o)
-    if type(o) == 'table' then
-       local s = '{ '
-       for k,v in pairs(o) do
-          if type(k) ~= 'number' then k = '"'..k..'"' end
-          s = s .. '['..k..'] = ' .. dump(v) .. ','
-       end
-       return s .. '} '
-    else
-       return tostring(o)
-    end
-end
-
 ---@class SupabaseClient : OxClass
 ---@field url string
 ---@field key string
@@ -499,49 +486,7 @@ end
 
 -- Export createClient and testClient as functions.
 function createClient(url, key)
-    print("is key   " .. key)
-    print("is url   " .. url)
     return { client = SupabaseClient:new(url, key) }
 end
 
-function testSuite(url, key)
-    local supabase = SupabaseClient:new(url, key)
-
-    -- Example: upsert (with auto-prefer header set for resolution=merge-duplicates)
-    local data, err = supabase
-        :from("players")
-        :upsert({ name = "TestPlayer3" }, { onConflict = "name" })
-        :single()
-        :await()
-
-    print("DATA: " ..dump(data))
-    print("ERROR: "..dump(err) or "nil")
-
-    local data, err = supabase
-        :from("players")
-        :select("name", "TestPlayer")
-        :single()
-        :await()
-
-    print("DATA " ..dump(data))
-    print("ERROR: "..dump(err) or "nil")
-
-    local data, err = supabase
-        :from("players")
-        :select()
-        :eq("name", "TestPlayer")
-        :single()
-        :await()
-
-    print("DATA " ..dump(data))
-    print("ERROR: "..dump(err) or "nil")
-
-    -- if err then
-    --     print("[testClient] Error:", err)
-    -- else
-    --     print("[testClient] Inserted data:", json.encode(data))
-    -- end
-end
-
 exports("createClient", createClient)
-exports("testClient", testSuite)
